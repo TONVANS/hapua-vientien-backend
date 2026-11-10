@@ -1,0 +1,9 @@
+/.agents
+/.env
+/.env.example
+/dist
+/node_modules
+/postman_collection.json
+Dockerfile
+docker-entrypoint.sh
+skills-lock.json

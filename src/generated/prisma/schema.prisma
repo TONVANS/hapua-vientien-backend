@@ -1,0 +1,259 @@
+generator client {
+  provider     = "prisma-client-js"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ------------------------------------------------------
+// ENUMS (ສຳລັບກຳນົດຄ່າຄົງທີ່ຕ່າງໆ)
+// ------------------------------------------------------
+enum Role {
+  ADMIN
+  DELEGATION
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ActivityStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELED
+}
+
+// ປະເພດຂອງໄຟລ໌ໃນ Gallery
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+// ວັນໃນອາທິດ ໃຊ້ກຳນົດວັນເປີດ-ປິດຂອງສະຖານທີ່ທ່ອງທ່ຽວ
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// ------------------------------------------------------
+// MODELS (ຕາຕະລາງໃນ Database)
+// ------------------------------------------------------
+
+// 1. ຂໍ້ມູນແຂກຜູ້ເຂົ້າຮ່ວມປະຊຸມ (Delegation)
+model Delegation {
+  id             String  @id @default(uuid())
+  title          String? // คำนำหน้า เช่น Mr., Ms., Mrs., Other
+  firstName      String
+  lastName       String
+  email          String  @unique
+  password       String? // ສຳລັບ Admin login (hashed)
+  phoneNumber    String?
+  position       String? // ຕຳແໜ່ງ
+  delegationCode String? @unique // ລະຫັດປະຈຳຕົວແຂກ ໃຊ້ສຳລັບ check-in / scan
+  role           Role    @default(DELEGATION)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  countryId String?
+  country   Country? @relation(fields: [countryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ຄວາມສຳພັນ: ແຂກສາມາດລົງທະບຽນເຂົ້າຮ່ວມໄດ້ໃນລະດັບ Activity
+  activities ActivityDelegation[]
+
+  @@index([countryId])
+  @@index([organizationId])
+}
+
+// 2. ຫ້ອງປະຊຸມ (Meeting Room)
+model Room {
+  id          String  @id @default(uuid())
+  name        String
+  location    String? // ຊັ້ນ ຫຼື ໂຊນຂອງຫ້ອງ
+  capacity    Int // ຄວາມຈຸຂອງຫ້ອງ
+  description String?
+  imageUrl    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Room ຜູກກັບ Activity ເທົ່ານັ້ນ
+  activities Activity[]
+}
+
+// 3. ກິດຈະກຳຫຼັກ (Activity)
+model Activity {
+  id                   String         @id @default(uuid())
+  name                 String
+  description          String?        @db.Text
+  qrCode               String?        @unique // QR Code ສຳລັບ scan ລົງທະບຽນເຂົ້າຮ່ວມກິດຈະກຳ
+  docURL               String?        @db.Text
+  allImageURL          String?        @db.Text
+  date                 DateTime       @db.Date
+  startTime            DateTime
+  endTime              DateTime
+  status               ActivityStatus @default(UPCOMING)
+  registrationDeadline DateTime?
+
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ຄວາມສຳພັນ
+  delegations ActivityDelegation[]
+  galleries   Gallery[]
+
+  @@index([date])
+  @@index([status])
+  @@index([roomId])
+}
+
+// ຕາຕະລາງເຊື່ອມຕໍ່ (Many-to-Many) ລະຫວ່າງ Delegation ແລະ Activity
+model ActivityDelegation {
+  activityId   String
+  delegationId String
+  registeredAt DateTime @default(now())
+
+  activity   Activity   @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  delegation Delegation @relation(fields: [delegationId], references: [id], onDelete: Cascade)
+
+  @@id([activityId, delegationId])
+}
+
+// 4. ຮູບພາບ ແລະ ວີດີໂອກິດຈະກຳ (Gallery)
+model Gallery {
+  id          String     @id @default(uuid())
+  title       String?
+  mediaUrl    String
+  mediaType   MediaType  @default(IMAGE)
+  visibility  Visibility @default(PUBLIC)
+  description String?
+
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([activityId])
+}
+
+// 6. ສະຖານທີ່ພັກແນະນຳ (Hotel Recommend)
+model HotelRecommend {
+  id          String  @id @default(uuid())
+  name        String
+  description String? @db.Text
+  address     String
+  starRating  Int?    @default(0)
+  contactInfo String?
+  coverImage  String?
+  websiteUrl  String?
+  mapUrl      String?
+
+  images HotelImage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model HotelImage {
+  id       String @id @default(uuid())
+  imageUrl String
+  order    Int?   @default(0)
+
+  hotelId String
+  hotel   HotelRecommend @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([hotelId])
+}
+
+// 7. ສະຖານທີ່ທ່ອງທ່ຽວແນະນຳ (Travel Recommend)
+model TravelRecommend {
+  id          String    @id @default(uuid())
+  placeName   String
+  description String?   @db.Text
+  location    String
+  openTime    DateTime? @db.Time
+  closeTime   DateTime? @db.Time
+  openDays    Weekday[]
+  mapUrl      String?
+  coverImage  String?
+
+  images TravelImage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TravelImage {
+  id       String @id @default(uuid())
+  imageUrl String
+  order    Int?   @default(0)
+
+  travelId String
+  travel   TravelRecommend @relation(fields: [travelId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([travelId])
+}
+
+// ------------------------------------------------------
+// ຂໍ້ມູນສຳລັບ Dropdown Master Data
+// ------------------------------------------------------
+
+// ຂໍ້ມູນປະເທດ (Country)
+model Country {
+  id   String  @id @default(uuid())
+  name String  @unique // ຊື່ປະເທດ (ເຊັ່ນ: Laos, Thailand, Vietnam)
+  code String? @unique // ລະຫັດປະເທດຫຍໍ້ 2 ຕົວອັກສອນ (ເຊັ່ນ: LA, TH, VN) ຖ້າມີ
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ຄວາມສຳພັນ (1 ປະເທດ ມີແຂກຫຼາຍຄົນ)
+  delegations Delegation[]
+}
+
+// ຂໍ້ມູນອົງກອນ ຫຼື ບໍລິສັດ (Organization)
+model Organization {
+  id        String  @id @default(uuid())
+  name      String  @unique // ຊື່ເຕັມຂອງອົງກອນ
+  shortName String? // ຊື່ຫຍໍ້ຂອງອົງກອນ (ທາງເລືອກ)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ຄວາມສຳພັນ (1 ອົງກອນ ມີແຂກຫຼາຍຄົນ)
+  delegations Delegation[]
+}
+
+// ------------------------------------------------------
+// 8. ສະຖິຕິການເຂົ້າຊົມເວັບໄຊ (Website Visitor Counter)
+// ------------------------------------------------------
+model SiteVisit {
+  id        String   @id @default(uuid())
+  ipHash    String? // SHA-256 hash ຂອງ IP ເພື່ອປ້ອງກັນການນັບຊ້ຳ ແລະ ເຄົາລົບ Privacy
+  userAgent String?  @db.Text
+  path      String?  @default("/")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([ipHash, createdAt])
+}
